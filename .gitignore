@@ -1,0 +1,37 @@
+# Virtual environment
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment variables — never commit API keys
+.env
+
+# User state files — generated at runtime
+history.json
+setup.json
+feeds.json
+pipeline_config.json
+pipeline_run.log
+output/metadata.json
+output/new_episodes.json
+output/transcription_checkpoint.json
+
+# Input/output folders — user content
+input/
+output/
+
+# Excluded files
+assets/
+dump/
+logo.png
+
+# VS Code settings
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# useless readme
+README.txt
