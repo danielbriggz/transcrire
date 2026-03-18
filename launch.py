@@ -152,12 +152,14 @@ def check_ffmpeg():
 CONFIG_PATH = "config.py"
 
 def read_config():
-    # Parses config.py into a key-value dict
-    # Skips comment lines and blank lines
+    # ---- Read API keys from .env ----
+    # Parses .env into a key-value dict.
+    # Skips comment lines and blank lines.
     config = {}
-    if not os.path.exists(CONFIG_PATH):
+    env_path = get_env_path()
+    if not os.path.exists(env_path):
         return config
-    with open(CONFIG_PATH, "r") as f:
+    with open(env_path, "r") as f:
         for line in f:
             line = line.strip()
             if "=" in line and not line.startswith("#"):
@@ -165,27 +167,45 @@ def read_config():
                 config[key.strip()] = value.strip().strip('"').strip("'")
     return config
 
+def get_env_path():
+    # ---- Resolve correct .env location ----
+    # When launched via Transcrire.cmd, TRANSCRIRE_APPDATA
+    # points to the AppData install folder.
+    # When run from VS Code, falls back to project root.
+    app_dir = os.environ.get(
+        "TRANSCRIRE_APPDATA",
+        os.path.dirname(os.path.abspath(__file__))
+    )
+    return os.path.join(app_dir, ".env")
+
 def write_api_key(key_name, value):
-    # Updates an existing key in config.py or appends it if not found
-    if not os.path.exists(CONFIG_PATH):
-        open(CONFIG_PATH, "w").close()
+    # ---- Write or update key in .env ----
+    # Never writes to config.py — keys live in .env only
+    env_path = get_env_path()
 
-    with open(CONFIG_PATH, "r") as f:
-        lines = f.readlines()
+    # Read existing .env content if present
+    lines = []
+    if os.path.exists(env_path):
+        with open(env_path, "r") as f:
+            lines = f.readlines()
 
-    updated = False
+    # Replace existing key or append if not found
+    key_found = False
     for i, line in enumerate(lines):
-        if line.strip().startswith(key_name):
-            lines[i] = f'{key_name} = "{value}"\n'
-            updated = True
+        if line.startswith(key_name + "="):
+            lines[i] = f"{key_name}={value}\n"
+            key_found = True
             break
 
-    if not updated:
-        # Key not found in file — append it
-        lines.append(f'{key_name} = "{value}"\n')
+    if not key_found:
+        lines.append(f"{key_name}={value}\n")
 
-    with open(CONFIG_PATH, "w") as f:
+    with open(env_path, "w") as f:
         f.writelines(lines)
+
+    # ---- Reload into current session immediately ----
+    # Ensures the key is available without restarting
+    os.environ[key_name] = value
 
 def validate_gemini_key(api_key):
     # Tests the Gemini key with a minimal generate call

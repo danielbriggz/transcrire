@@ -187,11 +187,78 @@ cd /d "%APP_DIR%"
 call "%VENV%\Scripts\activate.bat"
 
 :: ---- Pass all paths to the program via environment variables ----
-:: TRANSCRIRE_APPDATA tells config.py where to find the .env file
-:: TRANSCRIRE_INPUT and TRANSCRIRE_OUTPUT point to Desktop folders
 set TRANSCRIRE_APPDATA=%APP_DIR%
 set TRANSCRIRE_INPUT=%USER_DIR%\input
 set TRANSCRIRE_OUTPUT=%USER_DIR%\output
+
+:: ---- Check .env exists and is not empty ----
+:: If keys are missing, prompt before launching
+if not exist "%APP_DIR%\.env" (
+    echo.
+    echo  [WARNING] No .env file found. API keys are required.
+    goto PROMPT_KEYS
+)
+
+:: Read .env and check for empty keys
+findstr /i "GEMINI_API_KEY=." "%APP_DIR%\.env" >nul 2>&1
+if errorlevel 1 (
+    echo.
+    echo  [WARNING] Gemini API key is missing.
+    goto PROMPT_KEYS
+)
+
+findstr /i "GROQ_API_KEY=." "%APP_DIR%\.env" >nul 2>&1
+if errorlevel 1 (
+    echo.
+    echo  [WARNING] Groq API key is missing.
+    goto PROMPT_KEYS
+)
+
+goto LAUNCH_APP
+
+:PROMPT_KEYS
+echo.
+echo  ============================================
+echo   Missing API Keys
+echo  ============================================
+echo.
+
+:: ---- Read existing keys if .env present ----
+set EXISTING_GEMINI=
+set EXISTING_GROQ=
+if exist "%APP_DIR%\.env" (
+    for /f "tokens=2 delims==" %%a in ('findstr "GEMINI_API_KEY" "%APP_DIR%\.env"') do set EXISTING_GEMINI=%%a
+    for /f "tokens=2 delims==" %%a in ('findstr "GROQ_API_KEY" "%APP_DIR%\.env"') do set EXISTING_GROQ=%%a
+)
+
+:: ---- Only prompt for missing keys ----
+if "%EXISTING_GEMINI%"=="" (
+    echo  Gemini key missing. Get one at:
+    echo  https://aistudio.google.com/apikey
+    echo.
+    set /p GEMINI_KEY="  Paste your Gemini API key: "
+) else (
+    set GEMINI_KEY=%EXISTING_GEMINI%
+)
+
+if "%EXISTING_GROQ%"=="" (
+    echo.
+    echo  Groq key missing. Get one at:
+    echo  https://console.groq.com
+    echo.
+    set /p GROQ_KEY="  Paste your Groq API key: "
+) else (
+    set GROQ_KEY=%EXISTING_GROQ%
+)
+
+:: ---- Write updated keys back to .env ----
+echo GEMINI_API_KEY=%GEMINI_KEY%> "%APP_DIR%\.env"
+echo GROQ_API_KEY=%GROQ_KEY%>> "%APP_DIR%\.env"
+echo.
+echo  Keys saved. Launching Transcrire...
+echo.
+
+:LAUNCH_APP
 
 "%PYTHON%" launch.py
 if errorlevel 1 (
