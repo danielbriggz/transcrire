@@ -1,4 +1,4 @@
-# 🎙️ Podcast Agent
+# 🎙️ Transcrire
 
 > A semi-automated content pipeline that transforms podcast episodes into platform-ready social media assets — captions, quote cards and timestamp reference lists — with minimal manual effort.
 
@@ -13,60 +13,125 @@
 | Instagram | https://instagram.com/danielbriggz |
 | LinkedIn | https://linkedin.com/in/danieladisa |
 | Twitter/X | https://x.com/danielBriggz |
+| GitHub | https://github.com/danielbriggz/transcrire |
 
 ---
 
 ## 📌 Overview
 
-Podcast Agent is a Python-based CLI tool built for solo podcasters who want to repurpose episode content for social media without spending hours on manual editing and formatting.
+Transcrire is a Python-based CLI tool built for solo podcasters who want to repurpose episode content for social media without spending hours on manual editing and formatting.
 
-Given a podcast episode, the agent:
+Given a podcast episode, Transcrire can:
 
-1. **Fetches** the episode audio, cover art and Spotify link directly from your RSS feed
-2. **Transcribes** the audio — locally via Whisper or via the cloud using Groq
-3. **Generates** platform-specific social media captions using Google Gemini
-4. **Creates** styled quote card images using the episode cover art as a background
+1. **Fetch** the episode audio, cover art and Spotify link directly from your RSS feed
+2. **Transcribe** the audio — locally via Whisper or via the cloud using Groq
+3. **Generate** platform-specific social media captions using Google Gemini
+4. **Create** styled quote card images using the episode cover art as a background
 
-The pipeline can be run interactively step by step, or fully automated in a single command via `pipeline.py`.
+It also supports transcribing any audio file directly from your computer — no RSS feed required.
 
-**Built entirely with free tools and APIs.** Designed for a Nigerian podcaster on Windows, with practical constraints in mind.
+**Built entirely with free tools and APIs.** Designed for Windows, with practical constraints in mind.
+
+---
+
+## 💾 Installation
+
+### Option 1 — `Transcrire.cmd` (Recommended for most users)
+
+No VS Code, no Git, no manual setup. Just double-click and go.
+
+1. Download `Transcrire.cmd`
+2. Double-click it
+3. Follow the on-screen prompts — Python check, dependency install, API key setup
+4. Transcrire launches automatically
+
+On first run the installer:
+- Checks Python is installed (warns if 3.13+)
+- Downloads the project from GitHub automatically
+- Creates a virtual environment in `%APPDATA%\Transcrire\`
+- Installs all dependencies
+- Prompts for your Gemini and Groq API keys
+- Creates your working folders on the Desktop
+
+On every subsequent run it launches directly — skipping setup.
+
+**File locations:**
+- Scripts and config → `%APPDATA%\Transcrire\` (hidden from user)
+- Input and output folders → `Desktop\Transcrire\` (user-facing)
+
+---
+
+### Option 2 — Manual Setup (Developers / VS Code)
+
+**Requirements:**
+- Python 3.10–3.12 *(3.13 has known audio library issues)*
+- VS Code (recommended)
+- ffmpeg installed and added to system PATH
+
+**Install dependencies:**
+```bash
+pip install openai-whisper feedparser requests google-genai groq pillow plyer python-dotenv
+```
+
+**API Keys:**
+
+Create a `.env` file in the project root:
+```
+GEMINI_API_KEY=your-gemini-api-key-here
+GROQ_API_KEY=your-groq-api-key-here
+```
+
+| Key | Free tier at |
+|---|---|
+| `GEMINI_API_KEY` | https://aistudio.google.com/apikey |
+| `GROQ_API_KEY` | https://console.groq.com |
+
+`launch.py` will prompt for and validate both keys automatically on first run and save them to `.env`.
 
 ---
 
 ## 🗂️ Project Structure
 
 ```
-podcast-agent/
+transcrire/
 │
-├── input/                          # Downloaded audio files
+├── input/                            # Downloaded audio files
 │
 ├── output/
-│   └── {Episode Title} - SxEx/     # Per-episode subfolder (auto-created)
-│       ├── transcripts/             # Plain or timestamped transcripts
-│       ├── captions/                # Captions + reference lists
-│       └── images/                  # Cover art + quote card images
-│   ├── metadata.json                # Active episode info
-│   └── new_episodes.json            # Unprocessed RSS episodes (auto-generated)
+│   └── {Episode Title} - SxEx/       # Per-episode subfolder (auto-created)
+│       ├── transcripts/               # Plain or timestamped transcripts
+│       ├── captions/                  # Captions + reference lists
+│       └── images/                    # Cover art + quote card images
+│   ├── pc_transcripts/                # Transcripts from PC audio uploads
+│   ├── chunks/                        # Temporary audio chunks (auto-cleared)
+│   ├── metadata.json                  # Active episode info
+│   └── new_episodes.json              # Unprocessed RSS episodes (auto-generated)
 │
 ├── assets/
-│   └── fonts/                       # Atkinson Hyperlegible Mono weights
+│   └── fonts/                         # Atkinson Hyperlegible Mono weights
 │
 ├── scripts/
-│   ├── fetch.py                     # RSS feed fetcher
-│   ├── transcribe.py                # Audio transcriber
-│   ├── caption.py                   # Caption generator
-│   ├── imagegen.py                  # Quote card generator
-│   └── utils.py                     # Shared utilities
+│   ├── fetch.py                       # RSS feed fetcher
+│   ├── transcribe.py                  # Audio transcriber
+│   ├── caption.py                     # Caption generator
+│   ├── imagegen.py                    # Quote card generator
+│   ├── chunker.py                     # Audio chunker + checkpoint manager
+│   └── utils.py                       # Shared utilities
 │
-├── feeds.json                       # Saved RSS feeds
-├── history.json                     # Episode processing history
-├── setup.json                       # First-time setup flag
-├── pipeline_run.log                 # Automated pipeline run log
-├── launch.py                        # Setup checker + interactive launcher
-├── main.py                          # Interactive main menu
-├── pipeline.py                      # Full one-command pipeline runner
-├── cleanup.py                       # Input/output folder cleaner
-└── config.py                        # API keys + folder paths
+├── .env                               # API keys (never committed to GitHub)
+├── .env.example                       # API key template for new users
+├── .gitignore                         # Excludes keys, state files, venv
+├── feeds.json                         # Saved RSS feeds
+├── history.json                       # Episode processing history
+├── setup.json                         # First-time setup flag
+├── pipeline_run.log                   # Automated pipeline run log
+├── pipeline_config.json               # Saved Guided Auto configuration template
+├── launch.py                          # Setup checker + interactive launcher
+├── main.py                            # Interactive main menu
+├── pipeline.py                        # Full one-command pipeline runner
+├── cleanup.py                         # Input/output folder cleaner
+├── config.py                          # Folder paths + .env key loading
+└── Transcrire.cmd                     # Windows installer + launcher
 ```
 
 ---
@@ -75,6 +140,7 @@ podcast-agent/
 
 | Command | What it does |
 |---|---|
+| Double-click `Transcrire.cmd` | Install or launch Transcrire (no terminal needed) |
 | `python launch.py` | Run setup checks + launch interactive menu |
 | `python launch.py --setup` | Force re-run all setup checks |
 | `python pipeline.py` | Launch pipeline with mode selection |
@@ -82,53 +148,42 @@ podcast-agent/
 | `python pipeline.py --auto --season 6 --episode 5 --podcast "My Podcast"` | Fully non-interactive |
 | `python pipeline.py --config --season 6 --episode 5` | Load saved config template |
 | `python pipeline.py --review` | List all pending review caption files |
-| `python cleanup.py` | Delete all files in `input/` and `output/` |
-
----
-
-## ⚙️ Setup
-
-### Requirements
-
-- Python 3.10–3.12 *(3.13 has known audio library issues)*
-- VS Code (recommended)
-- ffmpeg installed and added to system PATH
-
-### Dependencies
-
-```bash
-pip install openai-whisper feedparser requests google-genai groq pillow plyer
-```
-
-### API Keys
-
-Add both keys to `config.py`:
-
-```python
-GEMINI_API_KEY = "your-gemini-api-key-here"
-GROQ_API_KEY   = "your-groq-api-key-here"
-```
-
-| Key | Free tier at |
-|---|---|
-| `GEMINI_API_KEY` | https://aistudio.google.com/apikey |
-| `GROQ_API_KEY` | https://console.groq.com |
-
-> `launch.py` will prompt for and validate both keys automatically on first run.
+| `python cleanup.py` | Delete all files in `input/`, `output/` and state files |
 
 ---
 
 ## 🛠️ Features
 
+### `Transcrire.cmd` — Windows Installer & Launcher
+
+The primary entry point for non-developer users. No Git, no VS Code, no terminal knowledge required.
+
+**First-time installation:**
+- Python version check with 3.13+ warning
+- Project downloaded from GitHub as a `.zip` via `curl` (built into Windows 10/11)
+- Virtual environment created in `%APPDATA%\Transcrire\`
+- All Python dependencies installed automatically
+- Gemini and Groq API keys collected and saved to `.env`
+- Desktop working folders created
+
+**Every launch:**
+- Detects existing install — skips setup
+- Checks `.env` for missing keys — prompts only for the one that's missing
+- Sets environment variables so scripts resolve correct paths
+- Launches `launch.py`
+
+---
+
 ### `launch.py` — Setup Checker
 
 Runs on first launch, skipped on subsequent runs unless `--setup` is passed.
 
-- Python version check — warns if 3.13+, opens download page if user declines to proceed
+- Python version check — warns if 3.13+, opens download page if user declines
 - Missing library detection — offers mass install
 - Library version check — compares installed vs latest PyPI versions, offers one-command update
 - ffmpeg check — step-by-step installation guidance if missing
-- API key validation — live test call before saving to `config.py`
+- API key validation — live test call before saving to `.env`
+- Missing key prompt — if a key is absent, prompts inline and saves without restarting
 - Font auto-download — all 7 Atkinson Hyperlegible Mono weights
 - Output folder creation
 - New episode detection — silently checks RSS feed on every launch, notifies in main menu
@@ -137,9 +192,32 @@ Runs on first launch, skipped on subsequent runs unless `--setup` is passed.
 
 ### `main.py` — Interactive Menu
 
+The menu starts with audio source selection before showing pipeline options.
+
+**Source selection (entry point):**
 ```
 ========================================
-        🎙️  PODCAST AGENT
+        🎙️  TRANSCRIRE
+========================================
+  Select audio source:
+
+  1. 💻  Upload from PC      (transcription only)
+  2. 📡  Podcast RSS         (full pipeline)
+----------------------------------------
+  0.     Exit
+========================================
+```
+
+**PC Upload path:**
+- Transcription only — no fetch, captions or images
+- Point to any audio file on your computer
+- Choose transcription mode (Groq or offline) and transcript type
+- After transcription, optionally copy the transcript to any folder
+
+**RSS path:**
+```
+========================================
+        🎙️  TRANSCRIRE — RSS
 ========================================
   📻 S6E5 — V073 Christians Lack Empa...
 ----------------------------------------
@@ -148,7 +226,7 @@ Runs on first launch, skipped on subsequent runs unless `--setup` is passed.
   3. ✅ Create Captions
   4. ⬜ Generate Images
 ----------------------------------------
-  0.    Exit
+  0.    Back to source selection
 ========================================
 
   🆕  1 new episode(s) available:
@@ -157,17 +235,17 @@ Runs on first launch, skipped on subsequent runs unless `--setup` is passed.
   N.  Fetch a new episode from the list above
 ```
 
-- Displays podcast name on launch, episode details once fetched
 - Status indicators (✅ / ⬜) per pipeline step — refreshes on every return
 - New episode notification banner for unprocessed RSS episodes
 - `N` shortcut to jump directly to fetching a new episode
-- Continue/return prompt after each step
+- `0` returns to source selection
 
 ---
 
 ### `fetch.py` — Episode Fetcher
 
-- Saves RSS feeds persistently in `feeds.json` — podcast name fetched automatically, no manual naming
+- Saves RSS feeds persistently in `feeds.json` — podcast name fetched automatically
+- Always shows full saved feed list with option to add a new RSS feed
 - Targets specific episodes by season + episode number
 - Duplicate detection via `history.json` — warns before reprocessing
 - Selective fetch: audio only, cover art only, Spotify link only, or all
@@ -194,9 +272,32 @@ Runs on first launch, skipped on subsequent runs unless `--setup` is passed.
 | Segment level | `[HH:MM:SS - HH:MM:SS] phrase` |
 | Word level | `[HH:MM:SS] word` inline |
 
+- Choose audio from the `input/` folder or paste any full file path from your computer
+- Validates file exists and is a supported format before proceeding
+- Transcript type prompt available for both RSS and PC upload paths
 - Groq mode compresses audio via ffmpeg before upload — auto-fallback to Whisper if file exceeds 25MB
-- Timestamped transcripts saved with `_segments` or `_words` suffix
-- Saves to per-episode transcripts subfolder
+- **Checkpoint-aware transcription** for files over 5 minutes:
+  - Audio split into 5-minute chunks via ffmpeg
+  - Progress saved after every chunk to `output/transcription_checkpoint.json`
+  - If interrupted, resumes from last completed chunk on next run
+  - Stale checkpoints from a different job prompt user before discarding
+  - Chunks deleted automatically on successful completion
+  - Timestamps accurately offset per chunk — final transcript is always correct
+- RSS transcripts saved to per-episode subfolder
+- PC upload transcripts saved to `output/pc_transcripts/`
+
+---
+
+### `scripts/chunker.py` — Audio Chunker & Checkpoint Manager
+
+Handles all chunking and checkpoint logic for long transcriptions.
+
+- Splits audio into 5-minute segments via ffmpeg
+- Saves transcription state after every chunk to `output/transcription_checkpoint.json`
+- Detects and resumes from a matching checkpoint on restart
+- Handles stale checkpoints — prompts user to delete, keep or cancel
+- Stitches chunk transcripts with timestamp offsetting for segment and word-level types
+- Clears checkpoint and chunk files on successful completion
 
 ---
 
@@ -212,13 +313,9 @@ Runs on first launch, skipped on subsequent runs unless `--setup` is passed.
 
 - Detects and prefers timestamped transcripts — labelled ⏱️ in selection menu
 - Preview + approve before saving
-- Four actions per platform:
-  - `1` Approve and save
-  - `2` Regenerate all
-  - `3` Skip platform
-  - `4` Edit an individual caption
+- Four actions per platform: Approve / Regenerate all / Skip / Edit individual caption
 - Single caption regeneration — Gemini replaces only the selected caption in matching style
-- Generates a `_references.txt` file per platform when a timestamped transcript is used — maps each caption to its source timestamp for clip editing
+- Generates a `_references.txt` file per platform when a timestamped transcript is used
 
 ---
 
@@ -227,15 +324,11 @@ Runs on first launch, skipped on subsequent runs unless `--setup` is passed.
 - Generates square (1080×1080) images — 3 Twitter + 2 Facebook per episode
 - Episode cover art as background: blurred + dark overlay
 - Auto font weight selection based on background brightness:
-  - Dark background → SemiBold (600)
-  - Light background → Medium (500)
+  - Dark background → SemiBold
+  - Light background → Medium
 - White centred text with drop shadow
 - Links stripped — images contain quote text only
-- Post-generation review per image:
-  - `1` Approve
-  - `2` Regenerate with lighter overlay
-  - `3` Regenerate with darker overlay
-  - `4` Skip and delete
+- Post-generation review per image: Approve / Lighter overlay / Darker overlay / Skip and delete
 
 **Font:** Atkinson Hyperlegible Mono at 34px
 
@@ -245,36 +338,18 @@ Runs on first launch, skipped on subsequent runs unless `--setup` is passed.
 
 Runs the full pipeline — fetch → transcribe → caption → images — in a single command.
 
-**Two modes:**
+**Audio source selection:**
+```
+Select audio source:
+  1. 💻  Upload from PC      (transcription only)
+  2. 📡  Podcast RSS         (full pipeline)
+  0.     Cancel
+```
 
-**Full Auto** — smart defaults, no interruptions after episode selection:
-- Fetches everything
-- Groq transcription, segment timestamps, fallback to offline
-- Captions for all platforms, auto-saved with `_pending_review` suffix
-- Images generated, review skipped
-
-**Guided Auto** — configure once, run uninterrupted:
-- Walks through every decision point upfront
-- Pre-flight validation after configuration — auto-corrects invalid settings before run starts
-- Prints confirmation summary before proceeding
-- Pipeline runs without stopping after confirmation
-
-**Safety features:**
-- Episode validated against RSS feed before anything runs
-- Duplicate detection per mode
-- Pending review backlog warning — scans entire `output/` tree, grouped by episode
-- All runs logged to `pipeline_run.log`
-- Captions always saved as `_pending_review` — never silently treated as final
-- Groq fallback flagged immediately at point of switch and again in summary + log with reason
-- Cover art absence logged as a note — does not fail the fetch stage
-- Caption platform partial success tracked and noted
-- Critical failures (fetch, transcribe) trigger hard stop
-- Non-critical failures (captions, images) logged and skipped
-
-**Pipeline menu:**
+**Pipeline menu (RSS):**
 ```
 ========================================
-     🎙️  PODCAST AGENT PIPELINE
+     🎙️  TRANSCRIRE PIPELINE
 ========================================
   1. Full Auto    — smart defaults, no interruptions
   2. Guided Auto  — configure once, then run
@@ -286,24 +361,36 @@ Runs the full pipeline — fetch → transcribe → caption → images — in a 
 ========================================
 ```
 
-- `T` option only appears when `pipeline_config.json` exists — shows saved podcast and settings
-- `R` option only appears when pending review files exist
-- Review session lets you mark individual files or all files as reviewed
-- Marking removes `_pending_review` suffix — file becomes the approved version
-- Pending count refreshes after every run and review session
-- Estimated run time displayed before each run based on most recent `pipeline_run.log` entry
-- Windows toast notification sent on Full Auto completion via `plyer` — falls back to terminal bell
-- Guided Auto offers to save configuration as a reusable `pipeline_config.json` template after confirming
+**Full Auto** — smart defaults, no interruptions after episode selection.
+
+**Guided Auto** — configure every decision once upfront, run uninterrupted. Includes pre-flight validation, save-as-template option and confirmation summary.
+
+**Safety features:**
+- Episode validated against RSS feed before anything runs
+- Duplicate detection per mode
+- Pending review backlog warning — scans entire `output/` tree, grouped by episode
+- All runs logged to `pipeline_run.log`
+- Captions always saved as `_pending_review` — never silently treated as final
+- Groq fallback flagged immediately at point of switch and again in summary + log
+- Critical failures (fetch, transcribe) trigger hard stop
+- Non-critical failures (captions, images) logged and skipped
+
+**Other pipeline features:**
+- `T` option — loads saved `pipeline_config.json` template (only shown when it exists)
+- `R` option — review pending captions inline (only shown when files exist)
+- Estimated run time shown before each run based on previous log entry
+- Windows toast notification on Full Auto completion via `plyer`
+- Post-run backlog count displayed with `--review` flag hint
 
 ---
 
 ### `cleanup.py` — Folder Cleaner
 
-Standalone utility that clears all files from `input/` and `output/` without deleting the folder structure.
+Standalone utility that clears all files from `input/`, `output/` and runtime state files.
 
 - Requires typing `yes` in full — prevents accidental deletion
-- Reports every deleted item
-- Prints total files and folders deleted
+- Clears: `input/`, `output/`, `history.json`, `metadata.json`, `new_episodes.json`, `transcription_checkpoint.json`
+- Reports every deleted item with total count
 
 ```bash
 python cleanup.py
@@ -334,11 +421,76 @@ output/V073 Christians Lack Empathy - S6E5/
     └── V073_facebook_quote2_square.jpg
 ```
 
+PC upload transcripts are saved to:
+```
+output/pc_transcripts/
+└── The Samson Essay_segments.txt
+```
+
+---
+
+## 🧰 Frameworks & Libraries
+
+### Core Language
+
+| Tool | Role |
+|---|---|
+| Python 3.10–3.12 | Primary language |
+
+### AI & Transcription
+
+| Library | Role |
+|---|---|
+| `openai-whisper` | Offline audio transcription — small model |
+| `groq` | Fast cloud transcription via Whisper Large v3 API |
+| `google-genai` | Caption generation via Gemini 2.5 Flash |
+
+### Audio Processing
+
+| Tool | Role |
+|---|---|
+| `ffmpeg` | Audio compression before Groq upload, chunk splitting |
+| `ffprobe` | Audio duration detection for chunking decision |
+
+### Data & Networking
+
+| Library | Role |
+|---|---|
+| `feedparser` | RSS feed parsing |
+| `requests` | HTTP requests for cover art and font downloads |
+| `python-dotenv` | `.env` file loading for API key management |
+
+### Image Generation
+
+| Library | Role |
+|---|---|
+| `Pillow` | Quote card image creation, cover art processing |
+
+### Notifications
+
+| Library | Role |
+|---|---|
+| `plyer` | Windows toast notifications on pipeline completion |
+
+### Distribution
+
+| Tool | Role |
+|---|---|
+| `Transcrire.cmd` | Windows installer and launcher — no Git required |
+| `curl` | Built into Windows 10/11 — downloads project zip from GitHub |
+| GitHub | Source of truth for distribution — all installs pull from here |
+
+### Typography
+
+| Asset | Role |
+|---|---|
+| Atkinson Hyperlegible Mono | Quote card font — 7 weights, downloaded from Google Fonts |
+
 ---
 
 ## 📅 Development Timeline
 
-All development took place in a single session on **March 15, 2026**, conducted collaboratively via Claude (claude.ai).
+Development conducted collaboratively via Claude (claude.ai).
 
 | Phase | What was built |
 |---|---|
@@ -363,16 +515,28 @@ All development took place in a single session on **March 15, 2026**, conducted 
 | 27 | Medium priority pipeline features — Groq notification, backlog review menu, Guided Auto edge cases |
 | 28 | `plyer` added to `launch.py` library checks |
 | 29 | Low priority pipeline features — estimated run time, config template, completion notification |
+| 30 | Custom audio file path added to `transcribe.py` |
+| 31 | Menu revamp — audio source selection, PC upload path, RSS pipeline path |
+| 32 | PC upload fixes — dedicated save folder, temp prefix stripped, transcript type prompt |
+| 33 | Program renamed to Transcrire — pitch deck created |
+| 34 | Transcription checkpoint — chunked transcription with resume-on-failure |
+| 35 | Bug fix — duplicate check running unconditionally in pipeline |
+| 36 | Bug fix — pipeline RSS selection always auto-selected first feed |
+| 37 | `cleanup.py` updated — state files added, Transcrire rename |
+| 38 | GitHub repository setup — `.gitignore`, `.env`, `.env.example` |
+| 39 | `Transcrire.cmd` built — Windows installer and launcher |
+| 40 | Distribution fixes — `.env` path resolution, PC transcript folder, inline key prompt |
+| 41 | Test run confirmed — installer, pipeline, PC upload and checkpoint all working |
 
 ---
 
 ## 🔮 Planned Updates
 
-| Priority | Feature |
+| Feature | Notes |
 |---|---|
-| Category B | Transcription resume from checkpoint — resume interrupted transcriptions without starting over |
-| Planned | Auto-posting to WhatsApp broadcast list |
-| Planned | Scheduled runs triggered by new RSS episodes |
+| GUI interface | Flask/FastAPI backend + React frontend — planned as next major phase |
+| Auto-posting to WhatsApp | Requires WhatsApp Business API — deferred pending free tier availability |
+| Scheduled RSS runs | Automatic pipeline trigger when new episode detected |
 
 ---
 
@@ -381,8 +545,10 @@ All development took place in a single session on **March 15, 2026**, conducted 
 - RSS feeds are saved after the first run — no need to re-enter them
 - Podcast name is fetched automatically from the RSS feed
 - All scripts display execution time on completion
-- Whisper runs fully offline after the initial model download
+- Whisper runs fully offline after the initial model download (~244MB, one-time)
 - Gemini and Groq both have free tiers sufficient for regular podcast use
 - Every episode gets its own subfolder — outputs never mix between episodes
 - Captions generated via pipeline are always marked `_pending_review` — review before posting
 - All pipeline runs are logged to `pipeline_run.log`
+- API keys are stored in `.env` and never committed to GitHub
+- When launched via `Transcrire.cmd`, all user files are saved to `Desktop\Transcrire\`

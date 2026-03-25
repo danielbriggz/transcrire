@@ -806,7 +806,26 @@ python pipeline.py --auto --season 6 --episode 5 --podcast "My Podcast"
 
 ---
 
-### Phase 29 — Low Priority Pipeline Features — `pipeline.py`
+### Phase 30 — Custom Audio File Path — `transcribe.py`
+
+**Feature:** Point `transcribe.py` at any audio file on the computer, not just files in `input/`.
+
+**Changes to `transcribe.py`:**
+
+`pick_audio()` refactored:
+- Now returns `(filename, folder)` tuple instead of filename string
+- Interactive mode presents a source selection prompt:
+  - `1` Choose from `input/` folder (original behaviour)
+  - `2` Provide a custom file path anywhere on the computer
+- Custom path option validates file existence and supported format (`.mp3`, `.wav`, `.m4a`)
+- Strips surrounding quotes from pasted paths — Windows Explorer sometimes adds them
+- Pipeline mode unchanged — uses config or most recent file in `input/`
+
+`transcribe()` updated:
+- Unpacks `(chosen, audio_folder)` tuple from `pick_audio()`
+- Builds `audio_path` using the returned folder — works for both `input/` and custom paths
+
+---
 
 #### `pipeline.py` — Low Priority Updates (Features 10, 11, 12)
 
@@ -833,20 +852,442 @@ python pipeline.py --auto --season 6 --episode 5 --podcast "My Podcast"
 
 ---
 
+### Phase 30 — `transcribe.py` — Custom Audio File Path
+
+**Feature:** User can now point `transcribe.py` at any audio file on their computer — not just files in `input/`.
+
+**Changes to `pick_audio(config=None)`:**
+- Added audio source selection at the start of interactive mode:
+  - `1` Choose from `input/` folder (original behaviour)
+  - `2` Enter a full file path from anywhere on the computer
+- Custom path option:
+  - Strips surrounding quotes — handles paths pasted directly from Windows Explorer
+  - Validates file exists before proceeding
+  - Validates file is a supported format (`.mp3`, `.wav`, `.m4a`)
+  - Returns the full absolute path directly
+- Pipeline mode updated to handle both full paths and filenames in `input/`
+- `input/` folder flow and all original behaviour unchanged
+
+**Change to `transcribe()`:**
+- Transcript filename now derived from `os.path.basename(audio_path)` — correctly handles full paths from anywhere on the computer without including directory components in the filename
+
+---
+
+### Phase 34 — Transcription Checkpoint (Category B)
+
+**Feature:** Resume interrupted transcriptions without starting over. Audio is split into 5-minute chunks, progress is saved after each chunk, and incomplete runs can be resumed from where they left off.
+
+---
+
+#### `scripts/chunker.py` — Created
+
+**Checkpoint management:**
+- `save_checkpoint()` — writes current progress to `output/transcription_checkpoint.json`
+- `load_checkpoint()` — reads existing checkpoint or returns None
+- `clear_checkpoint()` — removes checkpoint file and `output/chunks/` folder on success
+- `checkpoint_matches()` — validates loaded checkpoint against current job to prevent resuming the wrong run
+
+**Audio splitting:**
+- `split_audio()` — uses ffmpeg to split audio into 5-minute (300s) segments
+- Chunks saved to `output/chunks/` as zero-padded `.mp3` files
+- Returns ordered list of chunk paths or None on failure
+
+**Transcript stitching:**
+- `stitch_transcripts()` — joins chunk transcripts into single output
+- Plain: simple space join
+- Segments: timestamps offset per chunk position (`chunk_index × 300s`)
+- Words: timestamps offset inline across all word entries
+- `_offset_segment_line()`, `_offset_word_transcript()`, `_add_offset_to_timestamp()` — internal timestamp arithmetic helpers
+
+---
+
+#### `transcribe.py` — Checkpoint Integration
+
+**New `transcribe_chunked()` function:**
+- Checks for matching checkpoint before splitting — resumes if found
+- Splits audio into 5-minute chunks via `chunker.py`
+- Transcribes each chunk individually (Groq or offline Whisper)
+- Saves checkpoint after every chunk — crash loses at most one chunk's work
+- Handles Groq fallback per chunk — one chunk failing doesn't abort the rest
+- Stitches all results and clears checkpoint on completion
+
+**Updated `transcribe()` routing:**
+- Checks for existing checkpoint before choosing transcription path
+- If checkpoint found → routes directly to `transcribe_chunked()` to resume
+- Groq success path unchanged — no chunking overhead for fast cloud runs
+- Groq failure → routes to `transcribe_chunked()` offline (more resilient than single Whisper call)
+- Offline mode → always uses `transcribe_chunked()` — safe for any episode length
+
+---
+
+**Program renamed:**
+- Official name changed from "Podcast Agent" to **Transcrire**
+- All documentation updated to reflect the new name
+
+**Pitch deck created:**
+- 8-slide pitch deck produced as `Transcrire_PitchDeck.pptx`
+- Dark premium design — deep navy background, purple and teal accents
+- Font: Calibri throughout
+
+**Slides:**
+1. Cover — Transcrire name, tagline, decorative waveform
+2. The Problem — 3 pain points: time, repetition, cost
+3. The Solution — 4-step pipeline flow diagram
+4. Audio Sources — PC Upload vs Podcast RSS side by side
+5. Key Features — 6-feature grid with accent cards
+6. Pipeline Modes — Full Auto vs Guided Auto comparison
+7. Built Free — 6 free tools used with roles
+8. Developer — Daniel "Briggz" Adisa bio and social links
+
+---
+
+**Three issues identified and resolved across four files:**
+
+#### `config.py`
+- `PC_TRANSCRIPTS_FOLDER = "output/pc_transcripts"` constant added
+
+#### `launch.py`
+- `output/pc_transcripts` added to `check_folders()` — created on first setup
+
+#### `transcribe.py`
+- `PC_TRANSCRIPTS_FOLDER` imported from `config`
+- Save path logic updated: when `config["audio_source"] == "pc"`, saves to `PC_TRANSCRIPTS_FOLDER` instead of episode subfolder from `metadata.json`
+- `_temp_` prefix stripped from output filename before saving — no longer leaks into transcript filenames
+
+#### `pipeline.py`
+- Transcript type prompt added to PC upload block before calling `transcribe()`
+- User can now choose plain, segment level or word level for PC upload transcriptions
+- Defaults to segment level if no choice made
+- Chosen type passed into `pc_config`
+
+---
+
+**Structural change:** Audio source selection introduced as the first decision in both `main.py` and `pipeline.py`. The pipeline flow now branches based on whether audio comes from a PC file or a Podcast RSS feed.
+
+---
+
+#### `main.py` — Full Revamp
+
+**Audio source selection menu (new entry point):**
+```
+========================================
+        🎙️  PODCAST AGENT
+========================================
+  Select audio source:
+
+  1. 💻  Upload from PC      (transcription only)
+  2. 📡  Podcast RSS         (full pipeline)
+----------------------------------------
+  0.     Exit
+========================================
+```
+
+**PC Upload path (`run_pc_upload()`):**
+- Runs transcription only — no fetch, captions or images
+- `pick_audio()` prompts for custom file path from anywhere on computer
+- After transcription, prompts user to copy transcript to a different folder
+- Copies file using `shutil.copy2()` if destination specified
+- Returns to source selection menu on completion
+
+**RSS path (`run_rss_pipeline()`):**
+- Full pipeline menu exactly as before
+- `0` now returns to source selection instead of exiting
+- New episode notifications, status indicators, `N` shortcut all preserved
+
+**Other changes:**
+- `MENU` dict renamed to `RSS_MENU` — clearly scoped to RSS path only
+- `print_menu()` renamed to `print_rss_menu()`
+- Exit option moved to source selection menu
+
+---
+
+#### `pipeline.py` — Audio Source Integration
+
+**`PipelineConfig`:**
+- `audio_source` key added — values: `"rss"` (default) or `"pc"`
+
+**`main()` in `pipeline.py`:**
+- Audio source selection prompt added before mode selection
+- `audio_source` set on config before `run_pipeline()` is called
+
+**`run_pipeline()`:**
+- Fetch stage: skipped with logged reason when `audio_source == "pc"`
+- Captions stage: skipped with logged reason when `audio_source == "pc"`
+- Images stage: skipped with logged reason when `audio_source == "pc"`
+- Transcribe stage always runs regardless of source
+
+---
+
+### Phase 34 — Transcription Checkpoint (Category B)
+
+**Two files created/updated to implement resume-on-failure for long transcriptions.**
+
+---
+
+#### `scripts/chunker.py` — Created
+
+New module handling all chunk and checkpoint operations.
+
+**Constants:**
+- `CHECKPOINT_PATH = "output/transcription_checkpoint.json"`
+- `CHUNKS_FOLDER   = "output/chunks"`
+
+**Functions:**
+
+`save_checkpoint(data)` — writes current transcription state to checkpoint file after every completed chunk
+
+`load_checkpoint()` — reads existing checkpoint file, returns `None` if not found or unreadable
+
+`clear_checkpoint()` — deletes checkpoint file and entire `output/chunks/` folder on successful completion
+
+`checkpoint_matches(checkpoint, audio_path, transcript_type, mode)` — validates a loaded checkpoint against the current job before resuming
+
+`handle_stale_checkpoint(checkpoint)` — called when checkpoint doesn't match current job. Prompts D (delete) / K (keep) / C (cancel)
+
+`split_audio(audio_path, chunk_seconds=300)` — splits audio into 5-minute chunks via ffmpeg. Returns ordered list of chunk paths
+
+`stitch_transcripts(transcripts, transcript_type, chunk_seconds=300)` — joins chunk results into single transcript with corrected timestamps per chunk position
+
+**Chunk lifecycle:**
+- Created on transcription start for files > 5 minutes
+- Deleted automatically on success
+- Kept on interruption for resuming
+- Stale chunks from a different job prompt user before discarding
+
+---
+
+#### `transcribe.py` — Checkpoint Integration
+
+**New function `transcribe_with_checkpoint()`:**
+- Checks for existing checkpoint before starting
+- Resumes from last completed chunk if checkpoint matches
+- Calls `handle_stale_checkpoint()` on mismatch
+- Splits audio into 5-minute chunks
+- Transcribes each chunk saving progress after every one
+- Stitches final result with timestamp-corrected output
+- Cleans up checkpoint and chunks on success
+
+**Updated `transcribe()`:**
+- Checks audio duration via `ffprobe` before choosing strategy
+- Files > 5 minutes → `transcribe_with_checkpoint()` (chunked)
+- Files ≤ 5 minutes → single-pass Groq or Whisper (unchanged)
+
+---
+
+### Phase 35 — Bug Fix: Duplicate Check Running Unconditionally
+
+**Issue:** After the PC upload refactor, the duplicate episode check in `run_pipeline()` was running unconditionally — meaning every episode was treated as already in history regardless of what `history.json` actually contained.
+
+**Fix in `pipeline.py`:**
+- Wrapped the duplicate skip block inside `if check_pipeline_duplicate(config):` — restoring the conditional check accidentally dropped during refactoring
+- Episodes now only skip if they are actually found in `history.json`
+
+---
+
+### Phase 36 — Bug Fix: Pipeline RSS Selection Always Auto-Selected First Feed
+
+**Issue:** `select_podcast()` in `pipeline.py` auto-selected the only saved podcast without offering the user a chance to switch or add a new one — unlike `load_feed()` in `fetch.py` which always shows the full list.
+
+**Fix in `pipeline.py`:**
+- `select_podcast()` now always shows the full saved podcast list regardless of how many feeds are saved
+- Option `0` added — lets user add a new RSS feed URL
+- New feed name fetched automatically from the RSS feed and saved to `feeds.json`
+- Behaviour now matches `load_feed()` in `fetch.py`
+
+---
+
+### Phase 37 — `cleanup.py` Updated
+
+**Changes:**
+- `CLEAN_FILES` list expanded: added `output/new_episodes.json` and `output/transcription_checkpoint.json`
+- Confirmation prompt now lists both folders and state files before asking
+- `delete_folder_contents()` returns `(0, 0)` instead of `None` when folder not found — prevents tuple unpacking error
+- Header renamed from "Podcast Agent" to "Transcrire"
+
+---
+
 ## 📊 Session Summary
 
 | File | Status | Updates |
 |---|---|---|
-| `launch.py` | ✅ Complete | Setup checks, validation, re-check toggle, version checker, new episode detection, plyer added, comments |
-| `main.py` | ✅ Complete | Menu, status dashboard, episode display, new episode banner, fetch shortcut, comments |
+| `launch.py` | ✅ Complete | Setup checks, validation, version checker, new episode detection, plyer, pc_transcripts folder, comments |
+| `main.py` | ✅ Complete | Audio source selection, PC upload path, RSS pipeline path, status dashboard, new episode banner |
 | `fetch.py` | ✅ Complete | RSS, history, subfolders, error handling, new episode detection, pipeline refactor, comments |
-| `transcribe.py` | ✅ Complete | Groq + Whisper, timestamps, error handling, pipeline refactor, fallback notification, comments |
+| `transcribe.py` | ✅ Complete | Groq + Whisper, timestamps, error handling, pipeline refactor, fallback notification, custom path, PC save path, checkpoint integration, comments |
 | `caption.py` | ✅ Complete | Gemini, platforms, preview, single caption regeneration, references, pipeline refactor, comments |
 | `imagegen.py` | ✅ Complete | Quote cards, brightness detection, post-generation review, pipeline refactor, comments |
-| `pipeline.py` | ✅ Complete | Full Auto + Guided Auto, all priority features, review menu, estimated run time, notifications, config template |
+| `pipeline.py` | ✅ Complete | Full Auto + Guided Auto, all priority features, review menu, audio source routing, PC transcript type prompt, duplicate fix, RSS selection fix |
+| `scripts/chunker.py` | ✅ Complete | Audio splitting, checkpoint management, timestamp offsetting, stale chunk handling |
 | `utils.py` | ✅ Complete | Time formatter, metadata loader, METADATA_PATH constant |
-| `config.py` | ✅ Complete | Comments added |
-| `cleanup.py` | ✅ Complete | Standalone cleanup utility |
+| `config.py` | ✅ Complete | Comments, PC_TRANSCRIPTS_FOLDER constant |
+| `cleanup.py` | ✅ Complete | Folder + state file cleanup, Transcrire rename |
+| `README.md` | ✅ Complete | Full documentation |
+| `DEVLOG.md` | ✅ This file | |
+
+---
+
+## 🗂️ Pending (Future Sessions)
+
+### Phase 38 — GitHub Repository Setup
+
+**Actions:**
+- `.gitignore` created — excludes `.venv/`, `.env`, `dump/`, `history.json`, `setup.json`, `feeds.json`, `pipeline_config.json`, `pipeline_run.log`, `input/`, `output/`, `.vscode/`
+- `.env` created — API keys stored here, never in `config.py`
+- `.env.example` created — template showing required keys without exposing values
+- `config.py` updated — keys loaded via `python-dotenv`, never hardcoded
+- Repository initialised and pushed to `https://github.com/danielbriggz/transcrire`
+
+---
+
+### Phase 39 — `Transcrire.cmd` Built
+
+**Double-click installer and launcher for any Windows user.**
+
+**First run behaviour:**
+- Checks Python is installed — opens download page and exits if not found
+- Warns if Python 3.13+ detected
+- Creates `Desktop\Transcrire\input\` and `Desktop\Transcrire\output\` folders
+- Downloads project from GitHub as `.zip` via `curl` (built into Windows 10/11)
+- Extracts to `%APPDATA%\Transcrire\`
+- Creates Python virtual environment in AppData
+- Installs all dependencies
+- Prompts for Gemini and Groq API keys and writes to `.env`
+- Launches `launch.py`
+
+**Every subsequent run:**
+- Detects existing venv — skips installation
+- Checks `.env` for missing keys — prompts only for the missing one
+- Sets environment variables: `TRANSCRIRE_APPDATA`, `TRANSCRIRE_INPUT`, `TRANSCRIRE_OUTPUT`
+- Launches `launch.py`
+
+**File separation:**
+- `%APPDATA%\Transcrire\` — scripts, venv, config, fonts (hidden from user)
+- `%USERPROFILE%\Desktop\Transcrire\` — input/ and output/ folders (user-facing)
+
+---
+
+### Phase 40 — `config.py` + `launch.py` Distribution Fixes
+
+**Issues resolved:**
+
+1. **Groq/Gemini keys not loading via `.cmd`** — `config.py` was calling `load_dotenv()` without specifying a path, so it only found `.env` in the project root, not in AppData.
+
+2. **PC transcript saving to wrong folder** — `PC_TRANSCRIPTS_FOLDER` was hardcoded as a string rather than built from `OUTPUT_BASE`.
+
+3. **Missing API key required full reinstall** — `launch.py` and `Transcrire.cmd` now prompt for only the missing key inline, write it to `.env` and continue without restarting.
+
+**Changes to `config.py`:**
+- `TRANSCRIRE_APPDATA` env var used to resolve `.env` path — falls back to project root in VS Code
+- `load_dotenv(dotenv_path=ENV_PATH)` now always loads from the correct location
+- `PC_TRANSCRIPTS_FOLDER` now built from `OUTPUT_BASE` — correctly resolves to Desktop when launched via `.cmd`
+
+**Changes to `launch.py`:**
+- `get_env_path()` added — resolves correct `.env` location using `TRANSCRIRE_APPDATA`
+- `write_api_key()` rewrote to write to `.env` instead of `config.py`
+- `read_config()` updated to read from `.env` instead of `config.py`
+- Missing key prompt writes to `.env` and reloads into current session immediately
+
+**Changes to `Transcrire.cmd`:**
+- `TRANSCRIRE_APPDATA` environment variable added to `:LAUNCH` block
+- Per-launch key check added — reads `.env`, detects missing keys, prompts only for what's missing
+- Preserves existing keys when writing — never overwrites a valid key
+
+---
+
+### Phase 41 — `.cmd` Test Run + Bug Fixes
+
+**Test confirmed working:**
+- Python detected, version warning displayed for 3.13
+- GitHub download and extraction succeeded
+- All dependencies installed cleanly
+- Program launched and ran through full fetch → transcribe flow
+- Checkpoint system activated correctly for audio > 5 minutes
+- 3-chunk transcription completed with Groq fallback to Whisper per chunk
+- Checkpoint cleared on completion
+- PC upload path also tested and working
+
+**Bugs found and noted for fix:**
+- Groq connection errors due to empty `.env` keys — fixed in Phase 40
+- PC transcript saving to episode subfolder instead of `pc_transcripts/` — fixed in Phase 40
+
+---
+
+## 🛠️ Frameworks & Libraries Summary
+
+### Core Language
+| Tool | Version | Role |
+|---|---|---|
+| Python | 3.10–3.12 recommended | Primary language |
+
+### AI & Transcription
+| Library | Source | Role |
+|---|---|---|
+| `openai-whisper` | OpenAI | Offline audio transcription — small model |
+| `groq` | Groq | Fast cloud transcription via Whisper Large v3 API |
+| `google-genai` | Google | Caption generation via Gemini 2.5 Flash |
+
+### Audio Processing
+| Tool | Role |
+|---|---|
+| `ffmpeg` | Audio compression before Groq upload, chunk splitting |
+| `ffprobe` | Audio duration detection for chunking decision |
+
+### Data & Networking
+| Library | Role |
+|---|---|
+| `feedparser` | RSS feed parsing |
+| `requests` | HTTP requests for cover art and font downloads |
+| `python-dotenv` | `.env` file loading for API key management |
+
+### Image Generation
+| Library | Role |
+|---|---|
+| `Pillow` | Quote card image creation, cover art processing |
+
+### Notifications
+| Library | Role |
+|---|---|
+| `plyer` | Windows toast notifications on pipeline completion |
+
+### Distribution
+| Tool | Role |
+|---|---|
+| `Transcrire.cmd` | Windows installer and launcher — no Git required |
+| `curl` | Built into Windows 10/11 — downloads project zip from GitHub |
+| GitHub | Source of truth for distribution — all installs pull from here |
+
+### Typography
+| Asset | Role |
+|---|---|
+| Atkinson Hyperlegible Mono | Quote card font — 7 weights, downloaded from Google Fonts |
+
+### Development Environment
+| Tool | Role |
+|---|---|
+| VS Code | Primary IDE |
+| Python venv | Isolated dependency environment |
+| Git + GitHub | Version control and distribution |
+
+---
+
+## 📊 Session Summary
+
+| File | Status | Updates |
+|---|---|---|
+| `launch.py` | ✅ Complete | Setup checks, validation, version checker, new episode detection, plyer, pc_transcripts folder, .env key writing, inline missing key prompt |
+| `main.py` | ✅ Complete | Audio source selection, PC upload path, RSS pipeline path, status dashboard, new episode banner |
+| `fetch.py` | ✅ Complete | RSS, history, subfolders, error handling, new episode detection, pipeline refactor, comments |
+| `transcribe.py` | ✅ Complete | Groq + Whisper, timestamps, error handling, pipeline refactor, fallback notification, custom path, PC save path, checkpoint integration, comments |
+| `caption.py` | ✅ Complete | Gemini, platforms, preview, single caption regeneration, references, pipeline refactor, comments |
+| `imagegen.py` | ✅ Complete | Quote cards, brightness detection, post-generation review, pipeline refactor, comments |
+| `pipeline.py` | ✅ Complete | Full Auto + Guided Auto, all priority features, review menu, audio source routing, PC transcript type prompt, duplicate fix, RSS selection fix |
+| `scripts/chunker.py` | ✅ Complete | Audio splitting, checkpoint management, timestamp offsetting, stale chunk handling |
+| `utils.py` | ✅ Complete | Time formatter, metadata loader, METADATA_PATH constant |
+| `config.py` | ✅ Complete | .env key loading, AppData path resolution, dynamic folder paths |
+| `cleanup.py` | ✅ Complete | Folder + state file cleanup, Transcrire rename |
+| `Transcrire.cmd` | ✅ Complete | One-file Windows installer and launcher |
+| `.gitignore` | ✅ Complete | Excludes keys, state files, venv, user content |
+| `.env.example` | ✅ Complete | Template for user API key setup |
 | `README.md` | ✅ Complete | Full documentation |
 | `DEVLOG.md` | ✅ This file | |
 
@@ -856,6 +1297,6 @@ python pipeline.py --auto --season 6 --episode 5 --podcast "My Podcast"
 
 | Priority | Feature |
 |---|---|
-| Category B | Transcription resume from checkpoint |
+| Planned | GUI interface — Flask/FastAPI backend + React frontend |
 | Planned | Auto-posting to WhatsApp broadcast list |
 | Planned | Scheduled runs triggered by new RSS episodes |
