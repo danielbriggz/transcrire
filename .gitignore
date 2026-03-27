@@ -4,27 +4,26 @@ __pycache__/
 *.pyc
 *.pyo
 
+# uv
+uv.lock
+
 # Environment variables — never commit API keys
 .env
 
-# User state files — generated at runtime
-history.json
-setup.json
-feeds.json
-pipeline_config.json
-pipeline_run.log
-output/metadata.json
-output/new_episodes.json
-output/transcription_checkpoint.json
+# SQLite database — generated at runtime
+*.db
+*.db-shm
+*.db-wal
 
 # Input/output folders — user content
 input/
 output/
 
-# Excluded files
+# Excluded assets and dev files
 assets/
 dump/
 logo.png
+setup_scaffold.py
 
 # VS Code settings
 .vscode/
@@ -32,9 +31,3 @@ logo.png
 # OS files
 .DS_Store
 Thumbs.db
-
-# useless readme
-README.txt
-
-Transcrire architecture proposal.md
-Transrire Feature Proposal.md
