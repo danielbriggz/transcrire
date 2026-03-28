@@ -25,6 +25,7 @@ dump/
 logo.png
 setup_scaffold.py
 Transrire Feature Proposal.md
+build_domain.py
 
 # VS Code settings
 .vscode/
