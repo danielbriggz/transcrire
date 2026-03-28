@@ -24,6 +24,7 @@ assets/
 dump/
 logo.png
 setup_scaffold.py
+Transrire Feature Proposal.md
 
 # VS Code settings
 .vscode/
@@ -31,5 +32,3 @@ setup_scaffold.py
 # OS files
 .DS_Store
 Thumbs.db
-
-Transrire Feature Proposal.md
