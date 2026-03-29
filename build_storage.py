@@ -1,3 +1,38 @@
+"""
+Transcrire — Storage Layer Build Script
+=========================================
+Run from the project root:
+    python build_storage.py
+
+Writes:
+  - transcrire/storage/episodes.py
+  - transcrire/storage/assets.py
+
+storage/db.py was written in the database layer step.
+Overwrites existing placeholder files.
+"""
+
+from pathlib import Path
+
+ROOT    = Path(__file__).parent
+STORAGE = ROOT / "transcrire" / "storage"
+
+
+# ============================================================
+# HELPERS
+# ============================================================
+
+def write(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    print(f"  WRITTEN: {path}")
+
+
+# ============================================================
+# episodes.py
+# ============================================================
+
+EPISODES_PY = '''\
 # ============================================================
 # Transcrire — Episode Storage
 # ============================================================
@@ -97,7 +132,7 @@ def save_transcript(
     suffix: str = "",
 ) -> Path:
     """
-    Saves a transcript string to the episode's transcripts folder.
+    Saves a transcript string to the episode\'s transcripts folder.
 
     Args:
         transcript: Transcript text to save.
@@ -154,7 +189,7 @@ def save_captions(
     pending_review: bool = False,
 ) -> Path:
     """
-    Saves caption text to the episode's captions folder.
+    Saves caption text to the episode\'s captions folder.
 
     Args:
         captions_text:  Caption text to save.
@@ -200,8 +235,7 @@ def save_references(
     filename = f"{episode.safe_title}_{platform}_references.txt"
     output   = paths.captions / filename
 
-    header = f"CAPTION REFERENCES \u2014 {platform.upper()}\n{'=' * 40}\n\n"
-
+    header = f"CAPTION REFERENCES — {platform.upper()}\n{'=' * 40}\n\n"
     output.write_text(header + references_text, encoding="utf-8")
 
     logger.info("References saved", extra={"path": str(output)})
@@ -297,7 +331,7 @@ def write_manifest(episode: Episode, stage_results: list[StageResult]) -> Path:
     Called after every successful stage completion.
 
     The manifest is a read-only export — the database is always
-    authoritative. It exists to support 'transcrire recover' when
+    authoritative. It exists to support \'transcrire recover\' when
     the database is lost or the folder is moved to a new machine.
 
     Args:
@@ -346,7 +380,7 @@ def write_manifest(episode: Episode, stage_results: list[StageResult]) -> Path:
 def read_manifest(folder_path: Path) -> dict | None:
     """
     Reads a manifest.json from an episode folder.
-    Used by 'transcrire recover' to reconstruct DB rows.
+    Used by \'transcrire recover\' to reconstruct DB rows.
 
     Args:
         folder_path: Path to the episode output folder.
@@ -365,3 +399,231 @@ def read_manifest(folder_path: Path) -> dict | None:
             extra={"path": str(manifest_path), "error": str(e)},
         )
         return None
+'''
+
+
+# ============================================================
+# assets.py
+# ============================================================
+
+ASSETS_PY = '''\
+# ============================================================
+# Transcrire — Asset Storage
+# ============================================================
+# Manages fonts, cover art resolution, and audio file
+# discovery. Lazy validation — checked at first use,
+# not on every launch.
+#
+# Usage:
+#   from transcrire.storage.assets import ensure_fonts
+# ============================================================
+
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+
+import httpx
+
+from transcrire.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+# ============================================================
+# FONT URLS
+# Direct .ttf URLs from Google Fonts CDN.
+# ============================================================
+
+FONT_URLS: dict[str, str] = {
+    "AtkinsonHyperlegibleMono-ExtraLight": (
+        "https://fonts.gstatic.com/s/atkinsonhyperlegiblemono/v8/"
+        "tssNAoFBci4C4gvhPXrt3wjT1MqSzhA4t7IIcncBiyihrK15gZ4k_SaZnNeiDQ.ttf"
+    ),
+    "AtkinsonHyperlegibleMono-Light": (
+        "https://fonts.gstatic.com/s/atkinsonhyperlegiblemono/v8/"
+        "tssNAoFBci4C4gvhPXrt3wjT1MqSzhA4t7IIcncBiyihrK15gZ4k_SaZQteiDQ.ttf"
+    ),
+    "AtkinsonHyperlegibleMono-Regular": (
+        "https://fonts.gstatic.com/s/atkinsonhyperlegiblemono/v8/"
+        "tssNAoFBci4C4gvhPXrt3wjT1MqSzhA4t7IIcncBiyihrK15gZ4k_SaZHNeiDQ.ttf"
+    ),
+    "AtkinsonHyperlegibleMono-Medium": (
+        "https://fonts.gstatic.com/s/atkinsonhyperlegiblemono/v8/"
+        "tssNAoFBci4C4gvhPXrt3wjT1MqSzhA4t7IIcncBiyihrK15gZ4k_SaZLteiDQ.ttf"
+    ),
+    "AtkinsonHyperlegibleMono-SemiBold": (
+        "https://fonts.gstatic.com/s/atkinsonhyperlegiblemono/v8/"
+        "tssNAoFBci4C4gvhPXrt3wjT1MqSzhA4t7IIcncBiyihrK15gZ4k_SaZwtCiDQ.ttf"
+    ),
+    "AtkinsonHyperlegibleMono-Bold": (
+        "https://fonts.gstatic.com/s/atkinsonhyperlegiblemono/v8/"
+        "tssNAoFBci4C4gvhPXrt3wjT1MqSzhA4t7IIcncBiyihrK15gZ4k_SaZ-9CiDQ.ttf"
+    ),
+    "AtkinsonHyperlegibleMono-ExtraBold": (
+        "https://fonts.gstatic.com/s/atkinsonhyperlegiblemono/v8/"
+        "tssNAoFBci4C4gvhPXrt3wjT1MqSzhA4t7IIcncBiyihrK15gZ4k_SaZnNCiDQ.ttf"
+    ),
+}
+
+# Proxy for "all fonts present" — if Medium exists, all do
+_SENTINEL_FONT = "AtkinsonHyperlegibleMono-Medium"
+
+
+# ============================================================
+# FONT MANAGEMENT
+# ============================================================
+
+def fonts_present() -> bool:
+    """
+    Checks whether the required fonts are available.
+    Uses Medium weight as a proxy for all weights.
+    """
+    sentinel = settings.fonts_dir / f"{_SENTINEL_FONT}.ttf"
+    return sentinel.exists()
+
+
+def ensure_fonts() -> None:
+    """
+    Downloads all Atkinson Hyperlegible Mono font weights
+    if they are not already present.
+    Called lazily at first image generation — not on launch.
+
+    Raises:
+        httpx.HTTPError if a font download fails.
+    """
+    if fonts_present():
+        logger.debug("Fonts already present")
+        return
+
+    logger.info("Fonts not found — downloading from Google Fonts")
+    settings.fonts_dir.mkdir(parents=True, exist_ok=True)
+
+    for name, url in FONT_URLS.items():
+        dest = settings.fonts_dir / f"{name}.ttf"
+        logger.info("Downloading font", extra={"font": name})
+        response = httpx.get(url)
+        response.raise_for_status()
+        dest.write_bytes(response.content)
+        logger.info("Font downloaded", extra={"font": name})
+
+    logger.info("All fonts downloaded")
+
+
+# ============================================================
+# COVER ART RESOLUTION
+# ============================================================
+
+def find_cover_art(images_folder: Path) -> Path | None:
+    """
+    Finds the cover art file in an episode\'s images folder.
+    Returns the most recently modified cover file if multiple exist.
+
+    Args:
+        images_folder: Path to the episode\'s images subdirectory.
+
+    Returns:
+        Path to the cover art file, or None if not found.
+    """
+    if not images_folder.exists():
+        return None
+
+    covers = sorted(
+        [
+            f for f in images_folder.iterdir()
+            if f.suffix.lower() in (".jpg", ".jpeg", ".png")
+            and f.stem.endswith("_cover")
+        ],
+        key=lambda f: f.stat().st_mtime,
+        reverse=True,
+    )
+
+    if not covers:
+        return None
+
+    return covers[0]
+
+
+# ============================================================
+# AUDIO FILE MANAGEMENT
+# ============================================================
+
+def find_audio_files() -> list[Path]:
+    """
+    Returns all supported audio files in the input folder,
+    sorted by modification time (most recent first).
+    """
+    if not settings.input_folder.exists():
+        return []
+
+    return sorted(
+        [
+            f for f in settings.input_folder.iterdir()
+            if f.suffix.lower() in (".mp3", ".wav", ".m4a")
+        ],
+        key=lambda f: f.stat().st_mtime,
+        reverse=True,
+    )
+
+
+def most_recent_audio() -> Path | None:
+    """
+    Returns the most recently modified audio file in the
+    input folder, or None if no audio files are found.
+    """
+    files = find_audio_files()
+    return files[0] if files else None
+
+
+def validate_audio_path(path: Path) -> None:
+    """
+    Validates that a given audio path exists and is a supported format.
+
+    Args:
+        path: Path to validate.
+
+    Raises:
+        FileNotFoundError if the file does not exist.
+        ValueError if the file format is not supported.
+    """
+    if not path.exists():
+        raise FileNotFoundError(f"Audio file not found: {path}")
+
+    if path.suffix.lower() not in (".mp3", ".wav", ".m4a"):
+        raise ValueError(
+            f"Unsupported audio format: {path.suffix}\\n"
+            "Supported formats: .mp3, .wav, .m4a"
+        )
+'''
+
+
+# ============================================================
+# MAIN
+# ============================================================
+
+def main() -> None:
+    print("\n" + "=" * 50)
+    print("  Transcrire — Storage Layer")
+    print("=" * 50 + "\n")
+
+    write(STORAGE / "episodes.py", EPISODES_PY)
+    write(STORAGE / "assets.py",   ASSETS_PY)
+
+    print("\n" + "=" * 50)
+    print("  Storage layer complete.")
+    print("=" * 50)
+    print("""
+Next steps:
+  1. Verify no import errors:
+         python -c "from transcrire.storage.episodes import create_episode_folder; print('OK')"
+         python -c "from transcrire.storage.assets import ensure_fonts; print('OK')"
+
+  2. Commit:
+         git add -A
+         git commit -m "feat: implement storage layer"
+         git push origin rebuild
+""")
+
+
+if __name__ == "__main__":
+    main()
