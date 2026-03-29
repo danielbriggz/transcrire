@@ -25,9 +25,10 @@ dump/
 logo.png
 setup_scaffold.py
 Transrire Feature Proposal.md
-build_domain.py
-build_db.py
-build_services.py
+# build_domain.py
+# build_db.py
+# build_services.py
+# build_core.py
 
 # VS Code settings
 .vscode/
