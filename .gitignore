@@ -27,6 +27,7 @@ setup_scaffold.py
 Transrire Feature Proposal.md
 build_domain.py
 build_db.py
+build_services.py
 
 # VS Code settings
 .vscode/
