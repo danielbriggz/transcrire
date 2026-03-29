@@ -1,3 +1,36 @@
+"""
+Transcrire — Database Layer Build Script
+==========================================
+Run from the project root:
+    python build_db.py
+
+Writes:
+  - transcrire/storage/db.py
+
+Overwrites existing placeholder file.
+"""
+
+from pathlib import Path
+
+ROOT    = Path(__file__).parent
+STORAGE = ROOT / "transcrire" / "storage"
+
+
+# ============================================================
+# HELPERS
+# ============================================================
+
+def write(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    print(f"  WRITTEN: {path}")
+
+
+# ============================================================
+# db.py
+# ============================================================
+
+DB_PY = '''\
 # ============================================================
 # Transcrire — Database Layer
 # ============================================================
@@ -6,7 +39,7 @@
 #   - All read/write queries
 #   - Connection management
 #
-# The database lives in %APPDATA%\Transcrire\transcrire.db
+# The database lives in %APPDATA%\\Transcrire\\transcrire.db
 # (or the project root in development).
 #
 # Rules:
@@ -99,7 +132,7 @@ class Database:
     Manages the SQLite database connection and all queries.
 
     Instantiate once and reuse throughout the application.
-    Call init() on first use to create tables if they don't exist.
+    Call init() on first use to create tables if they don\'t exist.
 
     Example:
         db = Database()
@@ -138,7 +171,7 @@ class Database:
 
     def init(self) -> None:
         """
-        Creates all tables if they don't exist.
+        Creates all tables if they don\'t exist.
         Safe to call on every launch — idempotent.
         """
         with self._connect() as conn:
@@ -468,7 +501,7 @@ class Database:
     def clear_all(self) -> None:
         """
         Deletes all episodes, stage results and setup entries.
-        Feeds are preserved — the user's saved podcasts survive a clean.
+        Feeds are preserved — the user\'s saved podcasts survive a clean.
         Called by transcrire clean --all.
         """
         with self._connect() as conn:
@@ -515,3 +548,42 @@ def _stage_result_from_row(row: sqlite3.Row) -> StageResult:
         reviewed     = bool(row["reviewed"]),
         created_at   = datetime.fromisoformat(row["created_at"]),
     )
+'''
+
+
+# ============================================================
+# MAIN
+# ============================================================
+
+def main() -> None:
+    print("\n" + "=" * 50)
+    print("  Transcrire — Database Layer")
+    print("=" * 50 + "\n")
+
+    write(STORAGE / "db.py", DB_PY)
+
+    print("\n" + "=" * 50)
+    print("  Database layer complete.")
+    print("=" * 50)
+    print("""
+Next steps:
+  1. Verify no import errors:
+         python -c "from transcrire.storage.db import Database; print('OK')"
+
+  2. Smoke test — init the database:
+         python -c "
+from transcrire.storage.db import Database
+db = Database()
+db.init()
+print('DB initialised OK')
+"
+
+  3. Commit:
+         git add -A
+         git commit -m "feat: implement database layer"
+         git push origin rebuild
+""")
+
+
+if __name__ == "__main__":
+    main()
