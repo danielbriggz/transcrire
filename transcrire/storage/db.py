@@ -483,7 +483,8 @@ class Database:
 
 def _now() -> str:
     """Returns the current UTC time as an ISO 8601 string."""
-    return datetime.utcnow().isoformat()
+    from datetime import timezone
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _episode_from_row(row: sqlite3.Row) -> Episode:

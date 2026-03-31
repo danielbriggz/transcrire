@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from transcrire.domain.enums import Stage, Status
@@ -43,7 +43,7 @@ class StageResult:
     error        : str | None        = None
     duration_ms  : int | None        = None
     reviewed     : bool              = False
-    created_at   : datetime          = field(default_factory=datetime.utcnow)
+    created_at   : datetime          = field(default_factory=lambda: datetime.now(timezone.utc))
     id           : int | None        = None
 
     # ----------------------------------------------------------

@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from transcrire.domain.enums import (
@@ -56,8 +56,8 @@ class Episode:
     spotify_link  : str | None           = None
     folder_path   : Path | None          = None
     stage_results : list[StageResult]    = field(default_factory=list)
-    created_at    : datetime             = field(default_factory=datetime.utcnow)
-    updated_at    : datetime             = field(default_factory=datetime.utcnow)
+    created_at    : datetime             = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at    : datetime             = field(default_factory=lambda: datetime.now(timezone.utc))
     id            : int | None           = None
 
     # ----------------------------------------------------------
