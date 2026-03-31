@@ -7,20 +7,32 @@
 ::
 :: First run  — downloads and installs everything automatically
 :: Every run  — launches Transcrire directly
+::
+:: What this does:
+::   1. Checks Python is installed
+::   2. Bootstraps uv silently (no manual install required)
+::   3. Downloads the project from GitHub on first run
+::   4. Creates a virtual environment via uv
+::   5. Installs all dependencies from the lockfile
+::   6. Collects API keys and saves them to .env
+::   7. Launches Transcrire
 :: ============================================================
 
 title Transcrire
 
 :: ============================================================
 :: PATHS
-:: APP_DIR  — where scripts and venv live (hidden from user)
-:: USER_DIR — where input/ and output/ live (Desktop)
+:: APP_DIR  — scripts, venv, database, config (hidden)
+:: USER_DIR — input/ and output/ folders (Desktop, user-facing)
+:: UV_DIR   — standalone uv binary location
 :: ============================================================
 set APP_DIR=%APPDATA%\Transcrire
 set USER_DIR=%USERPROFILE%\Desktop\Transcrire
+set UV_DIR=%APP_DIR%\bin
+set UV_EXE=%UV_DIR%\uv.exe
 set VENV=%APP_DIR%\.venv
 set PYTHON=%VENV%\Scripts\python.exe
-set REPO=https://github.com/danielbriggz/transcrire/archive/refs/heads/main.zip
+set REPO_ZIP=https://github.com/danielbriggz/transcrire/archive/refs/heads/rebuild.zip
 
 echo.
 echo  ============================================
@@ -29,7 +41,7 @@ echo  ============================================
 echo.
 
 :: ============================================================
-:: STEP 1: CHECK PYTHON IS INSTALLED
+:: STEP 1: CHECK PYTHON
 :: ============================================================
 echo  Checking Python...
 python --version >nul 2>&1
@@ -46,47 +58,79 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
+
 for /f "tokens=2" %%v in ('python --version 2^>^&1') do set PYVER=%%v
 echo  Python %PYVER% found.
+
 for /f "tokens=2 delims=." %%m in ('python --version 2^>^&1') do set PYMINOR=%%m
 if %PYMINOR% GEQ 13 (
     echo.
-    echo  [WARNING] Python 3.13+ detected. Some audio features may not work correctly.
+    echo  [WARNING] Python 3.13+ detected.
     echo  Recommended: Python 3.10-3.12
+    echo  Some audio features may not work correctly.
     echo.
     timeout /t 5 >nul
 )
 
 :: ============================================================
-:: STEP 2: CREATE USER FOLDERS ON DESKTOP
-:: These are the only folders the user sees and interacts with
+:: STEP 2: BOOTSTRAP uv SILENTLY
+:: Downloads the standalone uv binary if not already present.
+:: No pip install uv — this is self-contained.
+:: ============================================================
+if exist "%UV_EXE%" goto UV_READY
+
+echo  Bootstrapping uv package manager...
+if not exist "%UV_DIR%" mkdir "%UV_DIR%"
+
+powershell -ExecutionPolicy ByPass -Command ^
+  "$env:UV_INSTALL_DIR = '%UV_DIR%'; irm https://astral.sh/uv/install.ps1 | iex" >nul 2>&1
+
+if not exist "%UV_EXE%" (
+    :: Fallback: try pip install uv into system Python
+    echo  Trying fallback install via pip...
+    pip install uv >nul 2>&1
+    for /f "delims=" %%i in ('python -c "import uv, os; print(os.path.dirname(uv.__file__))" 2^>nul') do set UV_EXE=%%i\uv.exe
+)
+
+if not exist "%UV_EXE%" (
+    echo.
+    echo  [ERROR] Could not bootstrap uv.
+    echo  Please install manually: https://docs.astral.sh/uv/
+    pause
+    exit /b 1
+)
+
+:UV_READY
+echo  uv ready.
+
+:: ============================================================
+:: STEP 3: CREATE USER FOLDERS ON DESKTOP
 :: ============================================================
 if not exist "%USER_DIR%\input"  mkdir "%USER_DIR%\input"
 if not exist "%USER_DIR%\output" mkdir "%USER_DIR%\output"
 
 :: ============================================================
-:: STEP 3: CHECK IF ALREADY INSTALLED
+:: STEP 4: CHECK IF ALREADY INSTALLED
 :: If venv exists, skip installation and launch directly
 :: ============================================================
 if exist "%PYTHON%" (
-    echo  Transcrire already installed. Launching...
-    goto LAUNCH
+    echo  Transcrire already installed.
+    goto SYNC_AND_LAUNCH
 )
 
 :: ============================================================
-:: STEP 4: FIRST-TIME INSTALLATION
+:: STEP 5: FIRST-TIME INSTALLATION
 :: ============================================================
 echo.
 echo  First-time setup. This will take a few minutes.
 echo  Please do not close this window.
 echo.
 
-:: ---- Create AppData directory ----
 if not exist "%APP_DIR%" mkdir "%APP_DIR%"
 
 :: ---- Download project from GitHub ----
 echo  Downloading Transcrire...
-curl -L -o "%APP_DIR%\transcrire.zip" "%REPO%"
+curl -L -o "%APP_DIR%\transcrire.zip" "%REPO_ZIP%"
 if errorlevel 1 (
     echo.
     echo  [ERROR] Download failed. Check your internet connection.
@@ -105,7 +149,6 @@ if errorlevel 1 (
 )
 
 :: ---- Move files to APP_DIR ----
-:: GitHub zip extracts to a subfolder — move contents up one level
 for /d %%i in ("%APP_DIR%\extracted\*") do (
     xcopy "%%i\*" "%APP_DIR%\" /E /I /Y >nul
 )
@@ -114,9 +157,9 @@ for /d %%i in ("%APP_DIR%\extracted\*") do (
 del "%APP_DIR%\transcrire.zip" >nul 2>&1
 rmdir /s /q "%APP_DIR%\extracted" >nul 2>&1
 
-:: ---- Create virtual environment ----
+:: ---- Create virtual environment via uv ----
 echo  Creating Python environment...
-python -m venv "%VENV%"
+"%UV_EXE%" venv "%VENV%" >nul 2>&1
 if errorlevel 1 (
     echo.
     echo  [ERROR] Could not create virtual environment.
@@ -124,10 +167,10 @@ if errorlevel 1 (
     exit /b 1
 )
 
-:: ---- Install dependencies ----
-echo  Installing dependencies (this may take a few minutes)...
-"%VENV%\Scripts\pip.exe" install --upgrade pip >nul 2>&1
-"%VENV%\Scripts\pip.exe" install openai-whisper feedparser requests google-genai groq pillow plyer python-dotenv
+:: ---- Install dependencies from lockfile ----
+echo  Installing dependencies...
+cd /d "%APP_DIR%"
+"%UV_EXE%" sync --frozen >nul 2>&1
 if errorlevel 1 (
     echo.
     echo  [ERROR] Dependency installation failed.
@@ -135,7 +178,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-:: ---- Create .env file — prompt user for API keys ----
+:: ---- Collect API keys ----
 if not exist "%APP_DIR%\.env" (
     echo.
     echo  ============================================
@@ -155,20 +198,12 @@ if not exist "%APP_DIR%\.env" (
     set /p GROQ_KEY="  Paste your Groq API key: "
     echo.
 
-    :: Write keys to .env
-    echo GEMINI_API_KEY=%GEMINI_KEY%> "%APP_DIR%\.env"
-    echo GROQ_API_KEY=%GROQ_KEY%>> "%APP_DIR%\.env"
+    echo TRANSCRIRE_GEMINI_API_KEY=%GEMINI_KEY%> "%APP_DIR%\.env"
+    echo TRANSCRIRE_GROQ_API_KEY=%GROQ_KEY%>> "%APP_DIR%\.env"
 
     echo  API keys saved.
     echo.
 )
-
-:: ---- Create config pointing to Desktop folders ----
-:: Override input/output paths to point to Desktop/Transcrire
-(
-    echo INPUT_FOLDER = r"%USER_DIR%\input"
-    echo OUTPUT_FOLDER = r"%USER_DIR%\output"
-) > "%APP_DIR%\user_paths.py"
 
 echo.
 echo  ============================================
@@ -180,41 +215,28 @@ echo  %USER_DIR%
 echo.
 
 :: ============================================================
-:: STEP 5: LAUNCH
+:: STEP 6: SYNC AND LAUNCH
+:: uv sync is a fast no-op if nothing has changed.
+:: On updates it installs new dependencies automatically.
 :: ============================================================
-:LAUNCH
+:SYNC_AND_LAUNCH
 cd /d "%APP_DIR%"
-call "%VENV%\Scripts\activate.bat"
 
-:: ---- Pass all paths to the program via environment variables ----
+:: ---- Set environment variables ----
 set TRANSCRIRE_APPDATA=%APP_DIR%
-set TRANSCRIRE_INPUT=%USER_DIR%\input
-set TRANSCRIRE_OUTPUT=%USER_DIR%\output
+set TRANSCRIRE_INPUT_FOLDER=%USER_DIR%\input
+set TRANSCRIRE_OUTPUT_FOLDER=%USER_DIR%\output
 
-:: ---- Check .env exists and is not empty ----
-:: If keys are missing, prompt before launching
-if not exist "%APP_DIR%\.env" (
-    echo.
-    echo  [WARNING] No .env file found. API keys are required.
-    goto PROMPT_KEYS
-)
+:: ---- Check for missing API keys ----
+if not exist "%APP_DIR%\.env" goto PROMPT_KEYS
 
-:: Read .env and check for empty keys
-findstr /i "GEMINI_API_KEY=." "%APP_DIR%\.env" >nul 2>&1
-if errorlevel 1 (
-    echo.
-    echo  [WARNING] Gemini API key is missing.
-    goto PROMPT_KEYS
-)
+findstr /i "TRANSCRIRE_GEMINI_API_KEY=." "%APP_DIR%\.env" >nul 2>&1
+if errorlevel 1 goto PROMPT_KEYS
 
-findstr /i "GROQ_API_KEY=." "%APP_DIR%\.env" >nul 2>&1
-if errorlevel 1 (
-    echo.
-    echo  [WARNING] Groq API key is missing.
-    goto PROMPT_KEYS
-)
+findstr /i "TRANSCRIRE_GROQ_API_KEY=." "%APP_DIR%\.env" >nul 2>&1
+if errorlevel 1 goto PROMPT_KEYS
 
-goto LAUNCH_APP
+goto RUN
 
 :PROMPT_KEYS
 echo.
@@ -223,15 +245,13 @@ echo   Missing API Keys
 echo  ============================================
 echo.
 
-:: ---- Read existing keys if .env present ----
 set EXISTING_GEMINI=
 set EXISTING_GROQ=
 if exist "%APP_DIR%\.env" (
-    for /f "tokens=2 delims==" %%a in ('findstr "GEMINI_API_KEY" "%APP_DIR%\.env"') do set EXISTING_GEMINI=%%a
-    for /f "tokens=2 delims==" %%a in ('findstr "GROQ_API_KEY" "%APP_DIR%\.env"') do set EXISTING_GROQ=%%a
+    for /f "tokens=2 delims==" %%a in ('findstr "TRANSCRIRE_GEMINI_API_KEY" "%APP_DIR%\.env"') do set EXISTING_GEMINI=%%a
+    for /f "tokens=2 delims==" %%a in ('findstr "TRANSCRIRE_GROQ_API_KEY" "%APP_DIR%\.env"') do set EXISTING_GROQ=%%a
 )
 
-:: ---- Only prompt for missing keys ----
 if "%EXISTING_GEMINI%"=="" (
     echo  Gemini key missing. Get one at:
     echo  https://aistudio.google.com/apikey
@@ -251,19 +271,22 @@ if "%EXISTING_GROQ%"=="" (
     set GROQ_KEY=%EXISTING_GROQ%
 )
 
-:: ---- Write updated keys back to .env ----
-echo GEMINI_API_KEY=%GEMINI_KEY%> "%APP_DIR%\.env"
-echo GROQ_API_KEY=%GROQ_KEY%>> "%APP_DIR%\.env"
+echo TRANSCRIRE_GEMINI_API_KEY=%GEMINI_KEY%> "%APP_DIR%\.env"
+echo TRANSCRIRE_GROQ_API_KEY=%GROQ_KEY%>> "%APP_DIR%\.env"
 echo.
 echo  Keys saved. Launching Transcrire...
 echo.
 
-:LAUNCH_APP
+:RUN
+:: ---- Sync dependencies (fast no-op if nothing changed) ----
+"%UV_EXE%" sync --frozen --quiet >nul 2>&1
 
-"%PYTHON%" launch.py
+:: ---- Launch ----
+"%PYTHON%" -m transcrire
+
 if errorlevel 1 (
     echo.
     echo  [ERROR] Transcrire encountered an error.
-    echo  Please check the output above for details.
+    echo  Check the log at: %APP_DIR%\transcrire.log
     pause
 )
