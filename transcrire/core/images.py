@@ -59,8 +59,8 @@ def detect_font_weight(cover_path: Path) -> FontWeight:
     """
     try:
         img = Image.open(cover_path).convert("L")
-        pixel_data    = list(img.getdata())
-        avg_brightness = sum(pixel_data) / len(pixel_data)
+        pixel_data    =img.tobytes()
+        avg_brightness = sum(pixel_data) / (img.width * img.height)
 
         if avg_brightness < BRIGHTNESS_DARK_THRESHOLD:
             logger.debug("Dark background detected", extra={"brightness": avg_brightness})
