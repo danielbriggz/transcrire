@@ -80,23 +80,32 @@ class Episode:
         Never call this from the CLI directly — use
         pipeline.get_available_actions() instead.
         """
-        if any(r.status == Status.FAILED for r in self.stage_results):
+        if not self.stage_results:
+            return EpisodeState.CREATED
+
+        # Get the latest result per stage — a successful retry
+        # should override a previous failure for the same stage.
+        latest_per_stage: dict[Stage, StageResult] = {}
+        for r in self.stage_results:
+            if r.stage not in latest_per_stage:
+                latest_per_stage[r.stage] = r
+            else:
+                if r.created_at > latest_per_stage[r.stage].created_at:
+                    latest_per_stage[r.stage] = r
+
+        # ERROR only if the latest attempt at any stage failed
+        if any(r.status == Status.FAILED for r in latest_per_stage.values()):
             return EpisodeState.ERROR
 
         completed = {
-            r.stage
-            for r in self.stage_results
+            stage for stage, r in latest_per_stage.items()
             if r.status == Status.COMPLETED
         }
 
-        if Stage.IMAGES in completed:
-            return EpisodeState.IMAGES_GENERATED
-        if Stage.CAPTIONS in completed:
-            return EpisodeState.CAPTIONS_GENERATED
-        if Stage.TRANSCRIBE in completed:
-            return EpisodeState.TRANSCRIBED
-        if Stage.FETCH in completed:
-            return EpisodeState.FETCHED
+        if Stage.IMAGES     in completed: return EpisodeState.IMAGES_GENERATED
+        if Stage.CAPTIONS   in completed: return EpisodeState.CAPTIONS_GENERATED
+        if Stage.TRANSCRIBE in completed: return EpisodeState.TRANSCRIBED
+        if Stage.FETCH      in completed: return EpisodeState.FETCHED
         return EpisodeState.CREATED
 
     def completion_level(self) -> CompletionLevel:

@@ -581,7 +581,7 @@ def _run_captions(db: Database, episode: Episode) -> None:
 
 def _run_images(db: Database, episode: Episode) -> None:
     """Runs the image generation stage interactively."""
-    from transcrire.core.images import build_quote_card, strip_urls, OVERLAY_DEFAULT, OVERLAY_LIGHT, OVERLAY_DARK
+    from transcrire.core.images import build_quote_card, OVERLAY_DEFAULT, OVERLAY_LIGHT, OVERLAY_DARK
     from transcrire.core.captions import strip_urls as caption_strip_urls
     from transcrire.storage.assets import ensure_fonts, find_cover_art
     from transcrire.storage.episodes import save_image, write_manifest, EpisodePaths
@@ -649,6 +649,8 @@ def _run_images(db: Database, episode: Episode) -> None:
                     quote_text      = clean_caption,
                     fonts_dir       = settings.fonts_dir,
                     overlay_opacity = OVERLAY_DEFAULT,
+                    podcast_name    = episode.podcast_name,
+                    episode_title   = episode.title,
                 )
                 save_image(image, output_path)
                 typer.echo(f"  ✅  Saved: {filename}")

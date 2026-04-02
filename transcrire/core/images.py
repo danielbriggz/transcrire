@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # CONSTANTS
 # ============================================================
 
-CARD_SIZE          = (1080, 1080)
+CARD_SIZE          = (1080, 1350)
 FONT_SIZE          = 34
 LINE_SPACING       = 16
 MARGIN             = 100
@@ -155,6 +155,8 @@ def build_quote_card(
     fonts_dir: Path,
     overlay_opacity: int = OVERLAY_DEFAULT,
     size: tuple[int, int] = CARD_SIZE,
+    podcast_name: str = "",
+    episode_title: str = "",
 ) -> Image.Image:
     """
     Builds a single quote card image in memory.
@@ -217,5 +219,26 @@ def build_quote_card(
         # White text
         draw.text((x, y), line, font=font, fill="white")
         y += line_height
+
+    # ---- Metadata line ----
+        # Podcast name and episode title rendered at the bottom
+        # in a smaller font size than the quote text.
+        if podcast_name or episode_title:
+            meta_parts = [p for p in [podcast_name, episode_title] if p]
+            meta_text  = "  |  ".join(meta_parts)
+            meta_size  = FONT_SIZE - 12  # 22px vs 34px for quote
+            try:
+                meta_font = ImageFont.truetype(
+                    str(fonts_dir / f"AtkinsonHyperlegibleMono-{font_weight.value}.ttf"),
+                    meta_size,
+                )
+                meta_bbox = draw.textbbox((0, 0), meta_text, font=meta_font)
+                meta_w    = meta_bbox[2] - meta_bbox[0]
+                meta_x    = (W - meta_w) // 2
+                meta_y    = H - MARGIN - (meta_size + 8)
+                draw.text((meta_x + 1, meta_y + 1), meta_text, font=meta_font, fill=(0, 0, 0, 180))
+                draw.text((meta_x, meta_y), meta_text, font=meta_font, fill=(255, 255, 255, 200))
+            except Exception:
+                pass  # Never let metadata rendering break the card
 
     return bg.convert("RGB")

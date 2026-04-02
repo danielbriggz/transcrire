@@ -26,8 +26,8 @@ from transcrire.domain.enums import FontWeight
 
 class TestConstants:
 
-    def test_card_size_is_square(self):
-        assert CARD_SIZE[0] == CARD_SIZE[1]
+    def test_card_size_is_portrait(self):
+        assert CARD_SIZE == (1080, 1350)
 
     def test_overlay_ordering(self):
         assert OVERLAY_LIGHT < OVERLAY_DEFAULT < OVERLAY_DARK

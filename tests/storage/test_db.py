@@ -394,15 +394,13 @@ class TestStateTransitions:
 
     def test_failure_then_retry_reflects_latest_state(self, db):
         """
-        After a failure, a successful retry should move state forward.
-        The ERROR state from the failed attempt is overridden by the
-        new COMPLETED result for the same stage.
+        After a successful retry, state should reflect the latest
+        result per stage — not the previous failure.
         """
         ep = db.create_episode(make_episode())
         db.record_stage_result(make_result(ep.id, Stage.FETCH,      Status.COMPLETED))
         db.record_stage_result(make_result(ep.id, Stage.TRANSCRIBE, Status.FAILED))
 
-        # Confirm ERROR state
         fetched = db.get_episode_by_id(ep.id)
         assert fetched.derive_state() == EpisodeState.ERROR
 
@@ -410,11 +408,5 @@ class TestStateTransitions:
         db.record_stage_result(make_result(ep.id, Stage.TRANSCRIBE, Status.COMPLETED))
         fetched = db.get_episode_by_id(ep.id)
 
-        # Now TRANSCRIBED — the FAILED result still exists but
-        # derive_state() checks if ANY result is FAILED first,
-        # so this test documents that a retry requires the pipeline
-        # to be aware that a previous FAILED result exists.
-        # The state machine does not automatically resolve ERROR
-        # — this is intentional. The CLI handles retry logic.
-        # State here will be ERROR because the FAILED row still exists.
-        assert fetched.derive_state() == EpisodeState.ERROR
+        # Latest TRANSCRIBE result is COMPLETED — state should advance
+        assert fetched.derive_state() == EpisodeState.TRANSCRIBED
